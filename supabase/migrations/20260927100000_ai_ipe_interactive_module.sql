@@ -1,10 +1,10 @@
 -- Secure, standalone persistence for the FAIMER Group 2 AI/IPE module.
--- It deliberately reuses the Learning Compass identity and institutional
--- boundary instead of creating a second set of user accounts.
+-- It runs on its own Supabase project, separate from Learning Compass, and
+-- uses the module's own accounts (public.module_profiles, 20260927095000).
 
 create table if not exists public.ai_ipe_module_facilitators (
-  user_id uuid primary key references public.profiles(user_id) on delete cascade,
-  assigned_by uuid not null references public.profiles(user_id),
+  user_id uuid primary key references public.module_profiles(user_id) on delete cascade,
+  assigned_by uuid not null references public.module_profiles(user_id),
   assigned_at timestamptz not null default now()
 );
 
@@ -27,14 +27,14 @@ revoke all on function private.is_ai_ipe_module_reviewer() from public, anon;
 grant execute on function private.is_ai_ipe_module_reviewer() to authenticated;
 
 create table if not exists public.ai_ipe_module_progress (
-  user_id uuid primary key references public.student_profiles(user_id) on delete cascade,
+  user_id uuid primary key references public.module_profiles(user_id) on delete cascade,
   learner_name text not null check (char_length(trim(learner_name)) between 2 and 160),
   learner_record jsonb not null default '{}'::jsonb,
   completion_status text not null default 'draft'
     check (completion_status in ('draft', 'submitted', 'needs_revision', 'approved')),
   submitted_at timestamptz,
   review_note text check (review_note is null or char_length(review_note) <= 2500),
-  reviewed_by uuid references public.profiles(user_id),
+  reviewed_by uuid references public.module_profiles(user_id),
   reviewed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -45,14 +45,14 @@ create index if not exists ai_ipe_module_progress_review_idx
 
 create table if not exists public.ai_ipe_module_certificates (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references public.student_profiles(user_id) on delete cascade,
+  user_id uuid not null unique references public.module_profiles(user_id) on delete cascade,
   certificate_code text not null unique
     check (certificate_code ~ '^FAIMER-AIIPE-2026-[A-Z0-9]{10}$'),
   participant_name text not null check (char_length(trim(participant_name)) between 2 and 160),
   module_title text not null default 'Using AI as a catalyst for interprofessional learning',
   module_period text not null default '1–30 November 2026',
   issued_on date not null default current_date,
-  issued_by uuid not null references public.profiles(user_id),
+  issued_by uuid not null references public.module_profiles(user_id),
   verifier_name text not null check (char_length(trim(verifier_name)) between 2 and 160),
   completion_record jsonb not null default '{}'::jsonb,
   revoked_at timestamptz,
@@ -230,7 +230,7 @@ begin
     raise exception 'Completion evidence is missing';
   end if;
 
-  select display_name into verifier from public.profiles where user_id = auth.uid();
+  select display_name into verifier from public.module_profiles where user_id = auth.uid();
   verifier := coalesce(nullif(verifier, ''), 'Assigned facilitator');
   new_code := 'FAIMER-AIIPE-2026-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));
 
