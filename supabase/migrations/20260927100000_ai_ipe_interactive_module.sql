@@ -144,6 +144,16 @@ alter table public.ai_ipe_module_facilitators enable row level security;
 alter table public.ai_ipe_module_progress enable row level security;
 alter table public.ai_ipe_module_certificates enable row level security;
 
+-- The shared project may already contain these policies from a staged/manual
+-- rollout. Replace them idempotently so this standalone migration can be
+-- replayed without failing on duplicate-policy errors.
+drop policy if exists "admins manage AI IPE module facilitators" on public.ai_ipe_module_facilitators;
+drop policy if exists "learners see their own AI IPE record" on public.ai_ipe_module_progress;
+drop policy if exists "reviewers see submitted AI IPE records" on public.ai_ipe_module_progress;
+drop policy if exists "learner creates own AI IPE record" on public.ai_ipe_module_progress;
+drop policy if exists "learner updates own AI IPE record" on public.ai_ipe_module_progress;
+drop policy if exists "certificate visible to learner or reviewer" on public.ai_ipe_module_certificates;
+
 revoke all on public.ai_ipe_module_facilitators, public.ai_ipe_module_progress,
   public.ai_ipe_module_certificates from anon, authenticated;
 grant select on public.ai_ipe_module_facilitators to authenticated;
@@ -279,4 +289,3 @@ $$;
 
 revoke all on function public.return_ai_ipe_module_completion(uuid, text) from public, anon;
 grant execute on function public.return_ai_ipe_module_completion(uuid, text) to authenticated;
-
