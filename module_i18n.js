@@ -19,6 +19,20 @@
     gu: { language: "ભાષા", start: "શરૂઆત", videos: "વિડિઓ", slides: "સ્લાઇડ્સ", assessment: "મૂલ્યાંકન", a1: "પ્રવૃત્તિ 1", a2: "પ્રવૃત્તિ 2", a3a: "પ્રવૃત્તિ 3A", a3b: "પ્રવૃત્તિ 3B", close: "સમાપન", certificate: "પ્રમાણપત્ર", startHeading: "અહીંથી શરૂ કરો", assessmentHeading: "પૂર્વ અને પછીનું મૂલ્યાંકન", a1Heading: "પ્રવૃત્તિ 1 · વિશ્વાસ પહેલાં સરખામણી કરો", a2Heading: "પ્રવૃત્તિ 2 · એક સંયુક્ત યોજના બનાવો", a3aHeading: "પ્રવૃત્તિ 3A · AI-સહાયિત IPE ડિઝાઇન", a3bHeading: "પ્રવૃત્તિ 3B · ટકાઉપણું મૂલ્યાંકન", closeHeading: "ચક્ર પૂર્ણ કરો", certificateHeading: "પ્રમાણપત્ર જનરેટર", videoHeading: "વિડિઓ લર્નિંગ લાઇબ્રેરી · 10 વિડિઓ", slidesHeading: "ઇન્ટરેક્ટિવ લર્નિંગ સ્લાઇડ શો", slidesIntro: "તમારી ગતિએ સ્લાઇડ જુઓ. તીર અથવા સ્લાઇડ પસંદગીનો ઉપયોગ કરો.", prev: "← પાછલું", next: "આગળ →", full: "પૂર્ણ સ્ક્રીન", jump: "સ્લાઇડ પસંદ કરો", download: "PPTX ડાઉનલોડ", verify: "પ્રમાણપત્ર ચકાસો", print: "પ્રમાણપત્ર પ્રિન્ટ / PDF", save: "આ બ્રાઉઝરમાં સાચવો", record: "શીખનાર રેકોર્ડ ડાઉનલોડ", signIn: "સુરક્ષિત સાઇન-ઇન લિંક ઇમેઇલ કરો" },
   };
 
+  const extraNavigationLabels = {
+    en: { resources: "Resources", journals: "Journal articles" },
+    hi: { resources: "संसाधन", journals: "जर्नल लेख" },
+    kn: { resources: "ಸಂಪನ್ಮೂಲಗಳು", journals: "ಜರ್ನಲ್ ಲೇಖನಗಳು" },
+    mr: { resources: "संसाधने", journals: "जर्नल लेख" },
+    ta: { resources: "வளங்கள்", journals: "ஆய்வுக் கட்டுரைகள்" },
+    te: { resources: "వనరులు", journals: "జర్నల్ వ్యాసాలు" },
+    ml: { resources: "വിഭവങ്ങൾ", journals: "ജേർണൽ ലേഖനങ്ങൾ" },
+    or: { resources: "ସମ୍ବଳ", journals: "ଜର୍ଣ୍ଣାଲ୍ ପ୍ରବନ୍ଧଗୁଡ଼ିକ" },
+    bn: { resources: "সম্পদ", journals: "জার্নাল প্রবন্ধ" },
+    pa: { resources: "ਸਰੋਤ", journals: "ਜਰਨਲ ਲੇਖ" },
+    gu: { resources: "સંસાધનો", journals: "જર્નલ લેખો" },
+  };
+
   function addStyles() {
     if (document.getElementById("module-language-styles")) return;
     const style = document.createElement("style"); style.id = "module-language-styles";
@@ -39,8 +53,9 @@
 
   function apply(code) {
     const t = translations[code] || translations.en; document.documentElement.lang = code; document.body.dataset.language = code;
-    const nav = { "#start": "start", "#video-library": "videos", "#learning-slideshow": "slides", "#assessment": "assessment", "#a1": "a1", "#a2": "a2", "#a3a": "a3a", "#a3b": "a3b", "#close": "close", "#certificate": "certificate" };
-    Object.entries(nav).forEach(([href, key]) => { const item = document.querySelector(`nav a[href="${href}"]`); if (item) item.textContent = t[key]; });
+    const nav = { "#start": "start", "#video-library": "videos", "#learning-slideshow": "slides", "#assessment": "assessment", "#a1": "a1", "#a2": "a2", "#a3a": "a3a", "#a3b": "a3b", "#close": "close", "#certificate": "certificate", "#resources": "resources", "#journal-references": "journals" };
+    const extraNav = extraNavigationLabels[code] || extraNavigationLabels.en;
+    Object.entries(nav).forEach(([href, key]) => { const item = document.querySelector(`nav a[href="${href}"]`); if (item) item.textContent = t[key] || extraNav[key] || extraNavigationLabels.en[key] || key; });
     [["#start h2", "startHeading"], ["#assessment h2", "assessmentHeading"], ["#a1 h2", "a1Heading"], ["#a2 h2", "a2Heading"], ["#a3a h2", "a3aHeading"], ["#a3b h2", "a3bHeading"], ["#close h2", "closeHeading"], ["#certificate h2", "certificateHeading"], ["#video-library h2", "videoHeading"], ["#learning-slideshow h2", "slidesHeading"]].forEach(([selector, key]) => setText(selector, t[key]));
     setText("#learning-slideshow .ls-head p", t.slidesIntro); setText("#lsPrev", t.prev); setText("#lsNext", t.next); setText("#lsFull", t.full); setText("#learning-slideshow .ls-download", t.download); setLabel('label[for="lsSelect"]', t.jump); setText("#verifyCertificateButton", t.verify); setText("#printCertificateButton", t.print); setText("#sendMagicLink", t.signIn); setText("#saveCloudRecord", t.save); setText("#downloadRecord", t.record);
     const languageLabel = document.querySelector("#moduleLanguagePanel label"); if (languageLabel) languageLabel.textContent = t.language; const select = document.getElementById("moduleLanguage"); if (select) select.setAttribute("aria-label", t.language);

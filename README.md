@@ -1,6 +1,6 @@
 # Using AI as a catalyst for interprofessional learning
 
-This repository hosts the interactive module for the FAIMER Group 2 November 2026 mentored learning web session. It remains usable offline in one browser, and the deployed version adds a secure Supabase completion register.
+This standalone repository hosts the interactive module for the FAIMER Group 2 November 2026 mentored learning web session. It is intentionally separate from the `learning-compass` source repository. It remains usable offline in one browser, and the deployed version adds a secure Supabase completion register.
 
 ## Use
 
@@ -15,9 +15,13 @@ The public site never contains a service-role key. GitHub Pages generates `confi
 
 The `supabase/` directory contains the migration and public certificate-verification Edge Function. The schema relies on the existing Learning Compass `profiles`, `student_profiles`, and administrator roles. Existing administrators can review completion records immediately; additional facilitators are added to `public.ai_ipe_module_facilitators` by an administrator.
 
+This repository is the deployment/source-of-truth boundary for the module. Do not copy its HTML, assets, or module migration into `learning-compass`; coordinate any shared identity/schema changes as a separately reviewed Supabase migration.
+
 ## Privacy
 
 Do not enter patient details, personal contact details, or restricted workplace information. A learner's full name is stored only in the protected completion register when they choose to request an official certificate. Certificate verification deliberately returns only the certificate holder, module, issue date, and verifier.
+
+Browser-only learner entries are stored in local browser storage and are not encrypted at rest. The secure register is optional and requires email sign-in; external videos and reference links require network access.
 
 ## Boundary
 

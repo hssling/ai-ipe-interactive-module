@@ -29,6 +29,7 @@
       <div class="card accent no-print" id="accountPanel" aria-live="polite">
         <h3>Secure learner record</h3>
         <p class="small" id="accountMessage">Sign in with email to save an encrypted-in-transit record, submit it for review, and receive a registered certificate.</p>
+        <p class="small">Browser-only entries stay on this device and are not encrypted at rest. Videos, external references and secure sign-in require an internet connection; use “Download learner record” to keep a backup and clear shared-device data when finished.</p>
         <div id="signedOutControls" class="grid g2">
           <div><label for="authName">Full name for your certificate</label><input id="authName" autocomplete="name" placeholder="Enter your name as it should appear"></div>
           <div><label for="authEmail">Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.org"></div>
