@@ -28,7 +28,7 @@ jobs:
           test -n "$SUPABASE_URL"
           test -n "$SUPABASE_PUBLISHABLE_KEY"
           mkdir _site
-          cp index.html app.js learning_videos.js learning_slides.js learning_deck_cover.png Group_2_AI_IPE_Learner_Learning_Deck.pptx README.md .nojekyll _site/
+          cp index.html app.js learning_videos.js learning_slides.js module_i18n.js learning_deck_cover.png Group_2_AI_IPE_Learner_Learning_Deck.pptx README.md .nojekyll _site/
           printf 'window.MODULE_CONFIG = %s;\n' "$(jq -cn --arg url "$SUPABASE_URL" --arg key "$SUPABASE_PUBLISHABLE_KEY" '{supabaseUrl:$url,supabasePublishableKey:$key}')" > _site/config.js
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -41,7 +41,7 @@
     const section = document.createElement("section");
     section.id = "video-library";
     section.innerHTML = `
-      <h2>Video learning library</h2>
+      <h2>Video learning library · 10 videos</h2>
       <p class="lead video-intro">Watch the short videos at the suggested points in the pathway. They are learning stimuli, not substitutes for the module activities, professional judgement or local policy. If a video is unavailable, use its title and link to open it directly on YouTube.</p>
       <div class="notice privacy"><strong>Privacy note.</strong> The embedded player is provided by YouTube. Do not enter personal, patient or restricted information in comments, prompts or linked services.</div>
       <div class="video-grid">
