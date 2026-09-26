@@ -48,4 +48,14 @@
   }
 
   addStyles(); addSelector(); apply(document.getElementById("moduleLanguage")?.value || "en");
+  // Keep legacy resource URLs working if a cached HTML/slideshow copy still contains them.
+  const resourceLinkAliases = new Map([
+    ["https://www.who.int/publications/i/item/framework-for-action-on-interprofessional-education-and-collaborative-practice", "https://www.who.int/publications-detail-redirect/framework-for-action-on-interprofessional-education-collaborative-practice"],
+    ["https://unesdoc.unesco.org/ark:/48223/pf0000386693", "https://www.unesco.org/en/articles/guidance-generative-ai-education-and-research"],
+    ["https://www.england.nhs.uk/sustainability-model/", "https://www.england.nhs.uk/improvement-hub/wp-content/uploads/sites/44/2017/11/NHS-Sustainability-Model-2010.pdf"]
+  ]);
+  document.querySelectorAll("a[href]").forEach((link) => {
+    const replacement = resourceLinkAliases.get(link.getAttribute("href"));
+    if (replacement) link.setAttribute("href", replacement);
+  });
 })();
