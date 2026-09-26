@@ -1,0 +1,5 @@
+project_id = "ai-ipe-interactive-module"
+
+[functions.verify-ai-ipe-certificate]
+verify_jwt = false
+
