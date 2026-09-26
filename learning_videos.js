@@ -2,36 +2,16 @@
   "use strict";
 
   const videos = [
-    {
-      id: "5Vg1aR1hOxY",
-      title: "AI Supported Case Reasoning",
-      purpose: "Use this before Activity 2 to notice how AI can support, but not replace, shared case reasoning.",
-      activity: "Activity 2 · Build one shared plan",
-    },
-    {
-      id: "zGi7rg2DpEQ",
-      title: "Critical AI Literacy",
-      purpose: "Use this during the assessment and Activity 1 to question confident outputs, omissions, evidence and bias.",
-      activity: "Assessment + Activity 1 · Compare before you trust",
-    },
-    {
-      id: "5hMRP0dCG7s",
-      title: "Self Directed Learning",
-      purpose: "Use this at the start of the module to plan your learning, monitor progress and identify the support you need.",
-      activity: "Start here · Learning pathway",
-    },
-    {
-      id: "lWEfq8kdWac",
-      title: "AI in IPE Conversations",
-      purpose: "Use this before group work to practise dialogue, role clarity, listening and respectful challenge across professions.",
-      activity: "Activities 1–2 · Interprofessional dialogue",
-    },
-    {
-      id: "sH9tuXjytoo",
-      title: "IPEC V3: Evaluating AI Teams",
-      purpose: "Use this during Activity 3 to connect the IPEC V3 competencies with evaluation, accountability and team performance.",
-      activity: "Activities 3A–3B · Design and sustainability",
-    },
+    { id: "5hMRP0dCG7s", title: "Self Directed Learning", purpose: "Start here to plan your learning, monitor progress and identify the support you need.", activity: "Start here · Learning pathway" },
+    { id: "al05uhMKnkQ", title: "AI in IPE Learning Videos", purpose: "Use this orientation video to connect the module theme with interprofessional learning.", activity: "Start here · Orientation" },
+    { id: "zGi7rg2DpEQ", title: "Critical AI Literacy", purpose: "Question confident outputs, omissions, evidence and bias before you use an AI stimulus.", activity: "Assessment + Activity 1 · Compare before you trust" },
+    { id: "u306daKhFyA", title: "Equity, Culture Identity", purpose: "Look for whose context, identity and lived experience may be missing from a plan or output.", activity: "Activity 1 · Equity audit" },
+    { id: "lWEfq8kdWac", title: "AI in IPE Conversations", purpose: "Practise dialogue, role clarity, listening and respectful challenge across professions.", activity: "Activity 2 · Team conversation" },
+    { id: "5Vg1aR1hOxY", title: "AI Supported Case Reasoning", purpose: "Notice how AI can support, but not replace, shared case reasoning.", activity: "Activity 2 · Build one shared plan" },
+    { id: "11FtBKm8d8A", title: "Bounded AI Supported IPE", purpose: "Define a useful AI role with clear limits, verification and a no-AI fallback.", activity: "Activity 3A · Intervention design" },
+    { id: "sH9tuXjytoo", title: "IPEC V3: Evaluating AI Teams", purpose: "Connect IPEC V3 competencies with evaluation, accountability and team performance.", activity: "Activity 3A · Evaluation plan" },
+    { id: "-D3gpBKaCK4", title: "Sustainability Beyond Workshop", purpose: "Consider the conditions that help a promising learning intervention survive beyond its pilot.", activity: "Activity 3B · Sustainability appraisal" },
+    { id: "a3QCrBPOZFs", title: "AI in Education Videos", purpose: "Extend the module with broader questions about responsible AI use in education and research.", activity: "Close · Further learning" },
   ];
 
   function addStyles() {
