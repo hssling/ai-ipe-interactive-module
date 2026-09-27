@@ -135,7 +135,7 @@
         </div>
         <div id="passwordRecoveryControls" class="card gold hidden" style="margin-top:1rem"><h4>Set a new password</h4><p class="small">Choose a new password for this module account, then continue with normal password sign-in.</p><div class="grid g2"><div><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div><label for="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div></div><button type="button" id="updatePassword">Save new password</button></div>
         <div id="signedInControls" class="hidden"><p><strong id="signedInName"></strong> <span id="signedInEmail" class="small"></span></p><button type="button" id="saveCloudRecord" class="secondary">Save secure record</button><button type="button" id="requestReview" class="warm">Submit for facilitator review</button><button type="button" id="signOut" class="outline">Sign out</button><p id="reviewStatus" class="small"></p></div>
-      </div>`);
+      </div><div id="privilegedConsoleMount"></div>`);
 
     const certificate = $("certificate");
     certificate.insertAdjacentHTML("beforeend", `
@@ -550,10 +550,10 @@
     await refreshFacilitatorAdminPanel();
   }
 
-  async function maybeShowAdminConsole() {
-    if (adminConsoleAdded || !(await currentUserIsAdmin())) return;
+  async function maybeShowAdminConsole(isAdmin = null) {
+    if (adminConsoleAdded || !(isAdmin ?? await currentUserIsAdmin())) return;
     adminConsoleAdded = true;
-    document.querySelector("main").insertAdjacentHTML("beforeend", `
+    $("privilegedConsoleMount").insertAdjacentHTML("beforeend", `
       <section id="facilitatorAdminConsole" class="no-print"><h2>Module administration</h2>
       <p class="lead">Assign or remove facilitator review access for accounts in this standalone AI/IPE database. This panel does not affect Learning Compass.</p>
       <div class="grid g2"><div><label for="facilitatorCandidate">Module account</label><select id="facilitatorCandidate"></select><button type="button" id="assignFacilitator">Assign facilitator</button><button type="button" id="refreshFacilitators" class="outline">Refresh users</button></div><div><p id="facilitatorAdminStatus" class="small" role="status"></p><div id="facilitatorAdminRows" class="grid"></div></div></div></section>`);
@@ -567,19 +567,26 @@
   }
 
   async function maybeShowReviewerConsole() {
+    const isAdmin = await currentUserIsAdmin();
     const { data, error } = await client.rpc("is_ai_ipe_module_reviewer");
-    if (error || !data || $("reviewerConsole")) return;
-    document.querySelector("main").insertAdjacentHTML("beforeend", `
+    if (!isAdmin && (error || !data)) return;
+    await maybeShowAdminConsole(isAdmin);
+    if ($("reviewerConsole")) return;
+    $("privilegedConsoleMount").insertAdjacentHTML("beforeend", `
       <section id="reviewerConsole" class="no-print"><h2>Facilitator review console</h2>
       <p class="lead">Review submitted learner records, request a specific revision, or issue a registered certificate. Approval does not alter the learner's evidence.</p>
       <button type="button" id="refreshReviews" class="secondary">Refresh submitted records</button>
       <div id="reviewRows" class="grid" style="margin-top:1rem"></div></section>`);
     $("refreshReviews").addEventListener("click", () => refreshReviews());
     $("reviewRows").addEventListener("click", reviewAction);
-    await refreshReviews();
+    try {
+      await refreshReviews();
+    } catch (refreshError) {
+      $("reviewRows").textContent = `Review records could not load: ${refreshError.message}`;
+    }
     if (!analyticsConsoleAdded) {
       analyticsConsoleAdded = true;
-      document.querySelector("main").insertAdjacentHTML("beforeend", `
+      $("privilegedConsoleMount").insertAdjacentHTML("beforeend", `
         <section id="analyticsConsole" class="no-print"><h2>Course analytics and report</h2>
         <p class="lead">This report summarises authenticated learner activity, assessment change, completion, feedback and timeliness. It does not expose individual assessment answers.</p>
         <div id="analyticsSummary" class="grid g3"></div>
@@ -588,9 +595,13 @@
       $("refreshAnalytics").addEventListener("click", () => refreshAnalytics());
       $("downloadAnalyticsCsv").addEventListener("click", downloadAnalyticsCsv);
       $("downloadAnalyticsJson").addEventListener("click", downloadAnalyticsJson);
-      await refreshAnalytics();
+      try {
+        await refreshAnalytics();
+      } catch (refreshError) {
+        $("analyticsStatus").textContent = `Course report could not load: ${refreshError.message}`;
+        $("analyticsStatus").className = "small needs";
+      }
     }
-    await maybeShowAdminConsole();
   }
 
   async function refreshReviews() {
