@@ -3,6 +3,34 @@
 -- learner evidence remains in ai_ipe_module_progress. Do not place patient or
 -- identifiable workplace information in event metadata.
 
+-- Keep the standalone profile display name aligned with the module's own
+-- sign-in metadata (the frontend supplies display_name rather than relying on
+-- an email-derived label).
+create or replace function private.handle_new_module_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.module_profiles (user_id, display_name)
+  values (
+    new.id,
+    coalesce(
+      nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''),
+      nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''),
+      nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
+      'Participant'
+    )
+  )
+  on conflict (user_id) do update set display_name = excluded.display_name;
+  return new;
+end;
+$$;
+
+alter function private.handle_new_module_user() owner to postgres;
+revoke all on function private.handle_new_module_user() from public, anon, authenticated;
+
 create table if not exists public.ai_ipe_module_schedule (
   activity_key text primary key check (activity_key ~ '^[a-z0-9_-]+$'),
   label text not null,
