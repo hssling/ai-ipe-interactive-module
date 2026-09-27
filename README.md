@@ -15,6 +15,14 @@ The public site never contains a service-role key. GitHub Pages generates `confi
 
 The `supabase/` directory contains the migrations and the public certificate-verification Edge Function. The module runs on its own Supabase project (`mdsxlbeqghivgltxpify`), fully separate from Learning Compass, with its own accounts: every sign-in gets a row in `public.module_profiles` (role `learner`). The project owner makes someone an administrator in SQL (`update public.module_profiles set role = 'admin' where user_id = …`); administrators then add facilitators to `public.ai_ipe_module_facilitators`.
 
+## Learning data and end-of-course reporting
+
+Authenticated learners automatically save a progress record, completion percentage, activity milestones, last-activity time and submission time. The assessment panel records explicit pre- and post-assessment attempts (scores only, not individual answers). Low-volume engagement events capture sessions, saves, activity completion, resource/video use, slide progress, submission and certificate download.
+
+Administrators and assigned facilitators see a **Course analytics and report** panel after sign-in. It provides registered/engaged/submitted/approved counts, completion and on-time rates, pre/post knowledge and confidence change, feedback averages, activity timeliness and active-day/session measures. The panel exports both a learner-level CSV and a JSON course report. Activity deadlines are defined in `public.ai_ipe_module_schedule` using India Standard Time for the November 2026 run.
+
+Apply migrations in filename order, including `20260927110000_learning_analytics_reporting.sql`, before enabling the report panel in production. The analytics views use `security_invoker` and the same learner/reviewer RLS boundaries as the underlying tables.
+
 This repository is the deployment/source-of-truth boundary for the module. Do not copy its HTML, assets, or module migration into `learning-compass`; coordinate any shared identity/schema changes as a separately reviewed Supabase migration.
 
 ## Privacy

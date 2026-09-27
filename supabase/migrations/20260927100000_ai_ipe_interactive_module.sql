@@ -144,7 +144,7 @@ alter table public.ai_ipe_module_facilitators enable row level security;
 alter table public.ai_ipe_module_progress enable row level security;
 alter table public.ai_ipe_module_certificates enable row level security;
 
--- The shared project may already contain these policies from a staged/manual
+-- The standalone project may already contain these policies from a staged/manual
 -- rollout. Replace them idempotently so this standalone migration can be
 -- replayed without failing on duplicate-policy errors.
 drop policy if exists "admins manage AI IPE module facilitators" on public.ai_ipe_module_facilitators;

@@ -14,6 +14,101 @@
   let remoteProgress = null;
   let officialCertificate = null;
   let syncTimer = null;
+  const sessionId = (window.crypto?.randomUUID?.() || `session-${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 120);
+  const eventThrottle = new Map();
+  let assessmentControlsAdded = false;
+  let analyticsConsoleAdded = false;
+
+  function activityStatusFromChecks() {
+    const checks = window.moduleChecks ? window.moduleChecks() : [];
+    return {
+      setup: Boolean(checks[0]?.done),
+      pre_assessment: Boolean(checks[1]?.done),
+      a1: Boolean(checks[2]?.done),
+      a2: Boolean(checks[3]?.done),
+      a3a: Boolean(checks[4]?.done),
+      a3b: Boolean(checks[5]?.done),
+      close: Boolean(checks[6]?.done),
+      facilitator_confirmation: Boolean(checks[7]?.done),
+    };
+  }
+
+  function completionPercent() {
+    const checks = window.moduleChecks ? window.moduleChecks() : [];
+    // Facilitator confirmation is a review decision, not learner evidence.
+    // Keep learner completion at 100% when the seven required evidence blocks
+    // are complete, then let completion_status represent approval separately.
+    const learnerChecks = checks.slice(0, 7);
+    return learnerChecks.length ? Math.round((learnerChecks.filter((item) => item.done).length / learnerChecks.length) * 100) : 0;
+  }
+
+  function assessmentScores() {
+    const answers = window.AI_IPE_ANSWERS || [];
+    let knowledgeAnswered = 0;
+    let knowledgeScore = 0;
+    answers.forEach((answer, index) => {
+      const selected = document.querySelector(`input[name="q${index}"]:checked`)?.value;
+      if (selected) knowledgeAnswered += 1;
+      if (selected === answer) knowledgeScore += 1;
+    });
+    let confidenceAnswered = 0;
+    let confidenceTotal = 0;
+    for (let index = 0; index < 8; index += 1) {
+      const selected = document.querySelector(`input[name="c${index}"]:checked`)?.value;
+      if (selected) { confidenceAnswered += 1; confidenceTotal += Number(selected); }
+    }
+    return { knowledgeScore, knowledgeMax: answers.length, knowledgeAnswered, confidenceTotal, confidenceMax: 40, confidenceAnswered };
+  }
+
+  async function recordEvent(eventType, activityKey = null, metadata = {}) {
+    if (!client || !activeUser) return;
+    const throttleKey = `${eventType}:${activityKey || ""}`;
+    const now = Date.now();
+    if (now - (eventThrottle.get(throttleKey) || 0) < 15000) return;
+    eventThrottle.set(throttleKey, now);
+    const { error } = await client.from("ai_ipe_module_events").insert({
+      user_id: activeUser.id,
+      event_type: eventType,
+      activity_key: activityKey,
+      session_id: sessionId,
+      metadata,
+    });
+    if (error) console.warn("Analytics event was not recorded", error.message);
+  }
+
+  function addAssessmentControls() {
+    if (assessmentControlsAdded || !$("assessment")) return;
+    assessmentControlsAdded = true;
+    $("assessment").insertAdjacentHTML("afterbegin", `
+      <div class="card accent no-print" id="assessmentRecordControls">
+        <h3>Record an assessment attempt</h3>
+        <p class="small">Capture the completed knowledge and confidence items as a baseline before learning and again after the module. Only the scores and timing are reported; individual answers are not included in course summaries.</p>
+        <button type="button" class="secondary" id="capturePreAssessment">Record pre-assessment</button>
+        <button type="button" id="capturePostAssessment">Record post-assessment</button>
+        <span class="small" id="assessmentCaptureStatus" role="status"></span>
+      </div>`);
+  }
+
+  async function captureAssessment(type) {
+    if (!activeUser) throw new Error("Sign in before recording an assessment attempt.");
+    const scores = assessmentScores();
+    if (scores.knowledgeAnswered < scores.knowledgeMax || scores.confidenceAnswered < 8) {
+      throw new Error("Answer all knowledge and confidence items before recording this assessment.");
+    }
+    const { error } = await client.from("ai_ipe_module_assessment_attempts").insert({
+      user_id: activeUser.id,
+      assessment_type: type,
+      knowledge_score: scores.knowledgeScore,
+      knowledge_max: scores.knowledgeMax,
+      confidence_total: scores.confidenceTotal,
+      confidence_max: scores.confidenceMax,
+      summary: { knowledge_answered: scores.knowledgeAnswered, confidence_answered: scores.confidenceAnswered },
+    });
+    if (error) throw error;
+    await recordEvent("assessment_captured", type === "pre" ? "pre_assessment" : "close", { assessment_type: type, knowledge_score: scores.knowledgeScore, confidence_total: scores.confidenceTotal });
+    $("assessmentCaptureStatus").textContent = `${type === "pre" ? "Pre" : "Post"}-assessment recorded at ${new Date().toLocaleString()}.`;
+    $("assessmentCaptureStatus").className = "small good";
+  }
 
   function assignStableFieldIds() {
     ["a1score", "a2score", "a3score"].forEach((className) => {
@@ -58,9 +153,17 @@
 
   function recordSnapshot() {
     const record = window.collect ? window.collect() : { fields: {} };
+    const now = new Date().toISOString();
+    const startedKey = `${recordKey}-started-at`;
+    const startedAt = localStorage.getItem(startedKey) || now;
+    localStorage.setItem(startedKey, startedAt);
     record.version = "November 2026 AI IPE interactive module — secure record";
-    record.savedAt = new Date().toISOString();
+    record.savedAt = now;
+    record.startedAt = startedAt;
+    record.lastActivityAt = now;
     record.completion = (window.moduleChecks ? window.moduleChecks() : []).map(({ label, done }) => ({ label, done }));
+    record.activityStatus = activityStatusFromChecks();
+    record.completionPercent = completionPercent();
     return record;
   }
 
@@ -131,11 +234,19 @@
 
   async function loadRemoteRecord() {
     if (!activeUser) return;
-    const { data, error } = await client
+    let { data, error } = await client
       .from("ai_ipe_module_progress")
-      .select("user_id, learner_name, learner_record, completion_status, submitted_at, review_note, reviewed_at, updated_at")
+      .select("user_id, learner_name, learner_record, completion_status, submitted_at, review_note, reviewed_at, updated_at, started_at, last_activity_at, last_saved_at, completion_percent, activity_status")
       .eq("user_id", activeUser.id)
       .maybeSingle();
+    if (error && /column|schema cache|does not exist/i.test(error.message || "")) {
+      const fallback = await client.from("ai_ipe_module_progress")
+        .select("user_id, learner_name, learner_record, completion_status, submitted_at, review_note, reviewed_at, updated_at")
+        .eq("user_id", activeUser.id)
+        .maybeSingle();
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) throw error;
     remoteProgress = data || null;
     if (data?.learner_record) {
@@ -158,13 +269,33 @@
     const name = learnerName();
     if (name.length < 2) throw new Error("Enter your full name for the certificate before saving.");
     const payload = recordSnapshot();
-    const { error } = await client.from("ai_ipe_module_progress").upsert({
+    let { error } = await client.from("ai_ipe_module_progress").upsert({
       user_id: activeUser.id,
       learner_name: name,
       learner_record: payload,
+      started_at: payload.startedAt,
+      last_activity_at: payload.lastActivityAt,
+      last_saved_at: payload.savedAt,
+      completion_percent: payload.completionPercent,
+      activity_status: payload.activityStatus,
     }, { onConflict: "user_id" });
+    if (error && /column|schema cache|does not exist/i.test(error.message || "")) {
+      const fallback = await client.from("ai_ipe_module_progress").upsert({
+        user_id: activeUser.id,
+        learner_name: name,
+        learner_record: payload,
+      }, { onConflict: "user_id" });
+      error = fallback.error;
+      if (!error && !quiet) setMessage("Record saved. Analytics fields will activate after the module database migration is applied.", "needs");
+    }
     if (error) throw error;
     localStorage.setItem(recordKey, JSON.stringify(payload));
+    const previousStatus = remoteProgress?.activity_status || {};
+    Object.entries(payload.activityStatus || {}).forEach(([activityKey, done]) => {
+      if (done && !previousStatus[activityKey]) recordEvent("activity_completed", activityKey, { completion_percent: payload.completionPercent });
+    });
+    recordEvent("record_saved", null, { completion_percent: payload.completionPercent });
+    remoteProgress = { ...(remoteProgress || {}), user_id: activeUser.id, learner_name: name, learner_record: payload, completion_percent: payload.completionPercent, activity_status: payload.activityStatus, last_activity_at: payload.lastActivityAt, last_saved_at: payload.savedAt };
     if (!quiet) setMessage("Secure record saved. Continue working or submit when all evidence is complete.", "good");
   }
 
@@ -179,10 +310,17 @@
   async function submitForReview() {
     if (!requiredEvidenceComplete()) throw new Error("Complete the first seven evidence sections before submitting for review.");
     await saveSecureRecord({ quiet: true });
-    const { error } = await client.from("ai_ipe_module_progress")
-      .update({ completion_status: "submitted", submitted_at: new Date().toISOString() })
+    let { error } = await client.from("ai_ipe_module_progress")
+      .update({ completion_status: "submitted", submitted_at: new Date().toISOString(), last_activity_at: new Date().toISOString() })
       .eq("user_id", activeUser.id);
+    if (error && /column|schema cache|does not exist/i.test(error.message || "")) {
+      const fallback = await client.from("ai_ipe_module_progress")
+        .update({ completion_status: "submitted", submitted_at: new Date().toISOString() })
+        .eq("user_id", activeUser.id);
+      error = fallback.error;
+    }
     if (error) throw error;
+    await recordEvent("module_submitted", "module", { completion_percent: completionPercent() });
     await loadRemoteRecord();
     setMessage("Your record has been submitted for facilitator review.", "good");
   }
@@ -217,8 +355,101 @@
     $("signedInEmail").textContent = activeUser.email ? `(${activeUser.email})` : "";
     if (!$("certNameInput").value) $("certNameInput").value = displayName;
     await loadRemoteRecord();
+    if (remoteProgress?.completion_status !== "approved") {
+      await saveSecureRecord({ quiet: true });
+    }
     setMessage("Your account is connected. Learning evidence is saved securely when you edit.", "good");
+    await recordEvent("session_started", null, { user_agent: navigator.userAgent.slice(0, 120) });
     await maybeShowReviewerConsole();
+  }
+
+  function addAnalyticsEventListeners() {
+    document.addEventListener("click", (event) => {
+      const anchor = event.target.closest?.("a[href]");
+      if (anchor) {
+        const href = anchor.getAttribute("href") || "";
+        const section = href.match(/^#(a1|a2|a3a|a3b|assessment|close)$/)?.[1];
+        if (section) recordEvent("activity_started", section, {});
+        if (/youtube\.com|youtu\.be/i.test(href)) {
+          let videoId = "external";
+          try { const url = new URL(href, window.location.href); videoId = url.searchParams.get("v") || url.pathname.split("/").filter(Boolean).pop() || videoId; } catch (_) { /* safe fallback */ }
+          recordEvent("video_opened", "video_library", { video_id: videoId });
+        } else if (/^https?:\/\//i.test(href) && !href.includes(window.location.host)) {
+          try { recordEvent("resource_opened", "resources", { host: new URL(href).host }); } catch (_) { /* safe fallback */ }
+        }
+      }
+      if (event.target.closest?.("#lsNext, #lsPrev, #lsSelect, #lsDots")) {
+        const slide = document.getElementById("lsSelect")?.value;
+        recordEvent("slide_progressed", "learning_slideshow", { slide: slide ? Number(slide) + 1 : null });
+      }
+      if (event.target.closest?.("#downloadCertificateButton")) recordEvent("certificate_downloaded", "certificate", {});
+    }, { passive: true });
+  }
+
+  function reportMetric(label, value, detail = "") {
+    return `<div class="card accent"><div class="small">${escapeHtml(label)}</div><strong style="font-size:1.55rem;color:var(--navy)">${escapeHtml(value)}</strong>${detail ? `<div class="small">${escapeHtml(detail)}</div>` : ""}</div>`;
+  }
+
+  function formatReportNumber(value, digits = 1) {
+    return value === null || value === undefined ? "—" : Number(value).toFixed(digits);
+  }
+
+  function csvCell(value) {
+    return `"${String(value ?? "").replace(/"/g, '""')}"`;
+  }
+
+  function downloadAnalyticsFile(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function downloadAnalyticsCsv() {
+    const rows = window.__aiIpeAnalyticsRows || [];
+    const columns = ["learner_name", "profession", "group_id", "completion_status", "completion_percent", "active_days", "session_count", "event_count", "activities_completed", "activities_on_time", "pre_knowledge_score", "post_knowledge_score", "knowledge_gain", "pre_confidence_mean", "post_confidence_mean", "confidence_gain", "feedback_mean", "submitted_at", "submission_timeliness", "last_activity_at"];
+    const csv = [columns.join(","), ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(","))].join("\n");
+    downloadAnalyticsFile(`AI_IPE_course_learner_report_${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+  }
+
+  function downloadAnalyticsJson() {
+    const payload = { generatedAt: new Date().toISOString(), summary: window.__aiIpeAnalyticsSummary || null, learners: window.__aiIpeAnalyticsRows || [] };
+    downloadAnalyticsFile(`AI_IPE_course_report_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(payload, null, 2), "application/json");
+  }
+
+  async function refreshAnalytics() {
+    const status = $("analyticsStatus");
+    if (!status) return;
+    status.textContent = "Loading course report…";
+    const [{ data: summary, error: summaryError }, { data: rows, error: rowsError }] = await Promise.all([
+      client.from("ai_ipe_course_report").select("*").maybeSingle(),
+      client.from("ai_ipe_module_reporting").select("*").order("completion_percent", { ascending: false }).order("last_activity_at", { ascending: false, nullsFirst: false }),
+    ]);
+    if (summaryError || rowsError) {
+      status.textContent = `Course report could not load: ${(summaryError || rowsError).message}`;
+      status.className = "small needs";
+      return;
+    }
+    window.__aiIpeAnalyticsSummary = summary || {};
+    window.__aiIpeAnalyticsRows = rows || [];
+    const s = summary || {};
+    $("analyticsSummary").innerHTML = [
+      reportMetric("Registered learners", s.registered_learners ?? 0),
+      reportMetric("Engaged learners", s.started_learners ?? 0, `${formatReportNumber(s.engagement_rate_percent)}% of registered`),
+      reportMetric("Submitted / approved", `${s.submitted_learners ?? 0} / ${s.approved_learners ?? 0}`, `${formatReportNumber(s.approval_rate_percent)}% approved`),
+      reportMetric("On-time submissions", s.on_time_submissions ?? 0, `${formatReportNumber(s.on_time_rate_percent)}% of submitted`),
+      reportMetric("Knowledge gain", formatReportNumber(s.mean_knowledge_gain), `${formatReportNumber(s.mean_pre_knowledge)} → ${formatReportNumber(s.mean_post_knowledge)}`),
+      reportMetric("Confidence gain", formatReportNumber(s.mean_confidence_gain), `${formatReportNumber(s.mean_pre_confidence)} → ${formatReportNumber(s.mean_post_confidence)} / 5`),
+      reportMetric("Mean active days", formatReportNumber(s.mean_active_days), `${formatReportNumber(s.mean_sessions)} sessions`),
+      reportMetric("Mean learner feedback", formatReportNumber(s.mean_feedback), "1–5 scale"),
+    ].join("");
+    const rowsArea = $("analyticsRows");
+    if (!rows?.length) rowsArea.innerHTML = `<p class="small">No learner accounts have been registered yet.</p>`;
+    else rowsArea.innerHTML = `<div style="overflow-x:auto"><table class="rubric"><thead><tr><th>Learner</th><th>Status</th><th>Complete</th><th>Active days</th><th>Activities on time</th><th>Knowledge</th><th>Confidence</th><th>Submission</th><th>Last active</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.learner_name)}<br><span class="small">${escapeHtml(row.profession || row.group_id || "")}</span></td><td>${escapeHtml(row.completion_status)}</td><td>${escapeHtml(row.completion_percent)}%</td><td>${escapeHtml(row.active_days ?? 0)}</td><td>${escapeHtml(row.activities_on_time ?? 0)} / ${escapeHtml(row.activities_completed ?? 0)}</td><td>${escapeHtml(row.pre_knowledge_score ?? "—")} → ${escapeHtml(row.post_knowledge_score ?? "—")}</td><td>${escapeHtml(formatReportNumber(row.pre_confidence_mean))} → ${escapeHtml(formatReportNumber(row.post_confidence_mean))}</td><td>${escapeHtml(row.submission_timeliness)}</td><td>${escapeHtml(row.last_activity_at ? new Date(row.last_activity_at).toLocaleString() : "—")}</td></tr>`).join("")}</tbody></table></div>`;
+    status.textContent = `Report generated ${new Date(s.generated_at || Date.now()).toLocaleString()}. Download the CSV or JSON for the end-of-course summary.`;
+    status.className = "small good";
   }
 
   async function maybeShowReviewerConsole() {
@@ -232,6 +463,19 @@
     $("refreshReviews").addEventListener("click", () => refreshReviews());
     $("reviewRows").addEventListener("click", reviewAction);
     await refreshReviews();
+    if (!analyticsConsoleAdded) {
+      analyticsConsoleAdded = true;
+      document.querySelector("main").insertAdjacentHTML("beforeend", `
+        <section id="analyticsConsole" class="no-print"><h2>Course analytics and report</h2>
+        <p class="lead">This report summarises authenticated learner activity, assessment change, completion, feedback and timeliness. It does not expose individual assessment answers.</p>
+        <div id="analyticsSummary" class="grid g3"></div>
+        <div class="footer-actions"><button type="button" id="refreshAnalytics" class="secondary">Refresh course report</button><button type="button" id="downloadAnalyticsCsv" class="outline">Download learner CSV</button><button type="button" id="downloadAnalyticsJson" class="outline">Download report JSON</button></div>
+        <p id="analyticsStatus" class="small" role="status"></p><div id="analyticsRows"></div></section>`);
+      $("refreshAnalytics").addEventListener("click", () => refreshAnalytics());
+      $("downloadAnalyticsCsv").addEventListener("click", downloadAnalyticsCsv);
+      $("downloadAnalyticsJson").addEventListener("click", downloadAnalyticsJson);
+      await refreshAnalytics();
+    }
   }
 
   async function refreshReviews() {
@@ -303,6 +547,8 @@
 
   async function boot() {
     assignStableFieldIds();
+    addAssessmentControls();
+    addAnalyticsEventListeners();
     addOnlineInterface();
     overrideCertificateGate();
     ["certIdInput", "certDateInput", "verifierInput", "certVerify", "confirmReviewed"].forEach((id) => { $(id).disabled = true; });
@@ -318,6 +564,8 @@
       return;
     }
     client = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey);
+    $("capturePreAssessment").addEventListener("click", () => captureAssessment("pre").catch((error) => { $("assessmentCaptureStatus").textContent = error.message; $("assessmentCaptureStatus").className = "small needs"; }));
+    $("capturePostAssessment").addEventListener("click", () => captureAssessment("post").catch((error) => { $("assessmentCaptureStatus").textContent = error.message; $("assessmentCaptureStatus").className = "small needs"; }));
     $("sendMagicLink").addEventListener("click", () => sendMagicLink().catch((error) => setMessage(error.message, "needs")));
     $("saveCloudRecord").addEventListener("click", () => saveSecureRecord().catch((error) => setMessage(error.message, "needs")));
     $("requestReview").addEventListener("click", () => submitForReview().catch((error) => setMessage(error.message, "needs")));
