@@ -21,6 +21,8 @@ Authenticated learners automatically save a progress record, completion percenta
 
 Administrators and assigned facilitators see a **Course analytics and report** panel after sign-in. It provides registered/engaged/submitted/approved counts, completion and on-time rates, pre/post knowledge and confidence change, feedback averages, activity timeliness and active-day/session measures. The panel exports both a learner-level CSV and a JSON course report. Activity deadlines are defined in `public.ai_ipe_module_schedule` using India Standard Time for the November 2026 run.
 
+An administrator also sees **Module administration**, where trusted learner accounts can be assigned or removed as facilitators directly from the page. These assignments affect only this standalone AI/IPE database.
+
 Apply migrations in filename order, including `20260927110000_learning_analytics_reporting.sql`, before enabling the report panel in production. The analytics views use `security_invoker` and the same learner/reviewer RLS boundaries as the underlying tables.
 
 This repository is the deployment/source-of-truth boundary for the module. Do not copy its HTML, assets, or module migration into `learning-compass`; coordinate any shared identity/schema changes as a separately reviewed Supabase migration.

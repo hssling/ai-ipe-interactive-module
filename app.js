@@ -18,6 +18,7 @@
   const eventThrottle = new Map();
   let assessmentControlsAdded = false;
   let analyticsConsoleAdded = false;
+  let adminConsoleAdded = false;
 
   function activityStatusFromChecks() {
     const checks = window.moduleChecks ? window.moduleChecks() : [];
@@ -452,6 +453,74 @@
     status.className = "small good";
   }
 
+  async function currentUserIsAdmin() {
+    const { data, error } = await client.from("module_profiles").select("role").eq("user_id", activeUser.id).maybeSingle();
+    return !error && data?.role === "admin";
+  }
+
+  async function refreshFacilitatorAdminPanel() {
+    const status = $("facilitatorAdminStatus");
+    const rowsArea = $("facilitatorAdminRows");
+    const select = $("facilitatorCandidate");
+    if (!status || !rowsArea || !select) return;
+    status.textContent = "Loading module users…";
+    const [{ data: users, error: usersError }, { data: assignments, error: assignmentsError }] = await Promise.all([
+      client.from("module_profiles").select("user_id, display_name, role, created_at").order("display_name"),
+      client.from("ai_ipe_module_facilitators").select("user_id, assigned_at, assigned_by").order("assigned_at"),
+    ]);
+    if (usersError || assignmentsError) {
+      status.textContent = `Facilitator list could not load: ${(usersError || assignmentsError).message}`;
+      status.className = "small needs";
+      return;
+    }
+    const assignmentMap = new Map((assignments || []).map((item) => [item.user_id, item]));
+    const candidates = (users || []).filter((user) => user.role !== "admin");
+    select.innerHTML = candidates.length
+      ? candidates.map((user) => `<option value="${escapeHtml(user.user_id)}">${escapeHtml(user.display_name)}${assignmentMap.has(user.user_id) ? " · already assigned" : ""}</option>`).join("")
+      : `<option value="">No learner accounts registered yet</option>`;
+    select.disabled = !candidates.length;
+    $("assignFacilitator").disabled = !candidates.length;
+    rowsArea.innerHTML = assignments?.length
+      ? assignments.map((assignment) => {
+        const user = (users || []).find((candidate) => candidate.user_id === assignment.user_id);
+        return `<article class="card accent"><strong>${escapeHtml(user?.display_name || assignment.user_id)}</strong><span class="small"> Assigned ${escapeHtml(new Date(assignment.assigned_at).toLocaleString())}</span><button type="button" class="outline" data-facilitator-action="remove" data-user="${escapeHtml(assignment.user_id)}">Remove facilitator access</button></article>`;
+      }).join("")
+      : `<p class="small">No facilitators are assigned yet.</p>`;
+    status.textContent = `${candidates.length} non-admin module account${candidates.length === 1 ? "" : "s"} available. Assign only trusted reviewers.`;
+    status.className = "small good";
+  }
+
+  async function assignFacilitator() {
+    const userId = $("facilitatorCandidate")?.value;
+    if (!userId) return;
+    const { error } = await client.from("ai_ipe_module_facilitators").upsert({ user_id: userId, assigned_by: activeUser.id }, { onConflict: "user_id" });
+    if (error) throw error;
+    await refreshFacilitatorAdminPanel();
+  }
+
+  async function removeFacilitator(userId) {
+    if (!window.confirm("Remove facilitator review access for this account?")) return;
+    const { error } = await client.from("ai_ipe_module_facilitators").delete().eq("user_id", userId);
+    if (error) throw error;
+    await refreshFacilitatorAdminPanel();
+  }
+
+  async function maybeShowAdminConsole() {
+    if (adminConsoleAdded || !(await currentUserIsAdmin())) return;
+    adminConsoleAdded = true;
+    document.querySelector("main").insertAdjacentHTML("beforeend", `
+      <section id="facilitatorAdminConsole" class="no-print"><h2>Module administration</h2>
+      <p class="lead">Assign or remove facilitator review access for accounts in this standalone AI/IPE database. This panel does not affect Learning Compass.</p>
+      <div class="grid g2"><div><label for="facilitatorCandidate">Module account</label><select id="facilitatorCandidate"></select><button type="button" id="assignFacilitator">Assign facilitator</button><button type="button" id="refreshFacilitators" class="outline">Refresh users</button></div><div><p id="facilitatorAdminStatus" class="small" role="status"></p><div id="facilitatorAdminRows" class="grid"></div></div></div></section>`);
+    $("assignFacilitator").addEventListener("click", () => assignFacilitator().catch((error) => { $("facilitatorAdminStatus").textContent = `Assignment failed: ${error.message}`; $("facilitatorAdminStatus").className = "small needs"; }));
+    $("refreshFacilitators").addEventListener("click", () => refreshFacilitatorAdminPanel());
+    $("facilitatorAdminRows").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-facilitator-action=remove]");
+      if (button) removeFacilitator(button.dataset.user).catch((error) => { $("facilitatorAdminStatus").textContent = `Removal failed: ${error.message}`; $("facilitatorAdminStatus").className = "small needs"; });
+    });
+    await refreshFacilitatorAdminPanel();
+  }
+
   async function maybeShowReviewerConsole() {
     const { data, error } = await client.rpc("is_ai_ipe_module_reviewer");
     if (error || !data || $("reviewerConsole")) return;
@@ -476,6 +545,7 @@
       $("downloadAnalyticsJson").addEventListener("click", downloadAnalyticsJson);
       await refreshAnalytics();
     }
+    await maybeShowAdminConsole();
   }
 
   async function refreshReviews() {
