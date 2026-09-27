@@ -4,7 +4,7 @@ This standalone repository hosts the interactive module for the FAIMER Group 2 N
 
 ## Use
 
-Open the published site in a modern browser. Learners can either keep work in their browser or sign in with an email magic link to save a private learner record. When all evidence is complete, they submit it to an assigned facilitator. A facilitator or module administrator reviews the record and issues a unique registered certificate; only then does the PDF download unlock.
+Open the published site in a modern browser. Learners can either keep work in their browser or create an account and sign in with an email and password to save a private learner record. Existing accounts can use **Forgot password?** once to set a password; routine visits then use password sign-in without a login link. When all evidence is complete, they submit it to an assigned facilitator. A facilitator or module administrator reviews the record and issues a unique registered certificate; only then does the PDF download unlock.
 
 ## Deployment configuration
 
@@ -31,7 +31,7 @@ This repository is the deployment/source-of-truth boundary for the module. Do no
 
 Do not enter patient details, personal contact details, or restricted workplace information. A learner's full name is stored only in the protected completion register when they choose to request an official certificate. Certificate verification deliberately returns only the certificate holder, module, issue date, and verifier.
 
-Browser-only learner entries are stored in local browser storage and are not encrypted at rest. The secure register is optional and requires email sign-in; external videos and reference links require network access.
+Browser-only learner entries are stored in local browser storage and are not encrypted at rest. The secure register is optional and requires password-based email sign-in; account creation and password recovery may send a one-time confirmation/reset email. External videos and reference links require network access.
 
 ## Boundary
 

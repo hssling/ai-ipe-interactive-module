@@ -19,6 +19,7 @@
   let assessmentControlsAdded = false;
   let analyticsConsoleAdded = false;
   let adminConsoleAdded = false;
+  let passwordRecoveryMode = /(?:^|[#&])type=recovery(?:&|$)/i.test(window.location.hash || "");
 
   function activityStatusFromChecks() {
     const checks = window.moduleChecks ? window.moduleChecks() : [];
@@ -124,13 +125,15 @@
     start.insertAdjacentHTML("afterbegin", `
       <div class="card accent no-print" id="accountPanel" aria-live="polite">
         <h3>Secure learner record</h3>
-        <p class="small" id="accountMessage">Sign in with email to save an encrypted-in-transit record, submit it for review, and receive a registered certificate.</p>
+        <p class="small" id="accountMessage">Use your email and password to save an encrypted-in-transit record, submit it for review, and receive a registered certificate.</p>
         <p class="small">Browser-only entries stay on this device and are not encrypted at rest. Videos, external references and secure sign-in require an internet connection; use “Download learner record” to keep a backup and clear shared-device data when finished.</p>
         <div id="signedOutControls" class="grid g2">
           <div><label for="authName">Full name for your certificate</label><input id="authName" autocomplete="name" placeholder="Enter your name as it should appear"></div>
           <div><label for="authEmail">Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.org"></div>
-          <div style="grid-column:1/-1"><button type="button" id="sendMagicLink">Email me a secure sign-in link</button><p class="small">No password is required. Your learning evidence is visible only to you and assigned reviewers.</p></div>
+          <div><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" minlength="8" placeholder="At least 8 characters"></div>
+          <div style="grid-column:1/-1"><button type="button" id="signInPassword">Sign in</button><button type="button" id="createPasswordAccount" class="secondary">Create account</button><button type="button" id="forgotPassword" class="outline">Forgot password?</button><p class="small">Use the same password on future visits. New accounts may require one email confirmation; password recovery uses a one-time email link.</p></div>
         </div>
+        <div id="passwordRecoveryControls" class="card gold hidden" style="margin-top:1rem"><h4>Set a new password</h4><p class="small">Choose a new password for this module account, then continue with normal password sign-in.</p><div class="grid g2"><div><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div><label for="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div></div><button type="button" id="updatePassword">Save new password</button></div>
         <div id="signedInControls" class="hidden"><p><strong id="signedInName"></strong> <span id="signedInEmail" class="small"></span></p><button type="button" id="saveCloudRecord" class="secondary">Save secure record</button><button type="button" id="requestReview" class="warm">Submit for facilitator review</button><button type="button" id="signOut" class="outline">Sign out</button><p id="reviewStatus" class="small"></p></div>
       </div>`);
 
@@ -326,19 +329,59 @@
     setMessage("Your record has been submitted for facilitator review.", "good");
   }
 
-  async function sendMagicLink() {
+  function validatePassword(password) {
+    if (password.length < 8) throw new Error("Use a password with at least 8 characters.");
+  }
+
+  async function signInWithPassword() {
+    const email = String($("authEmail").value || "").trim();
+    const password = String($("authPassword").value || "");
+    if (!email || !password) throw new Error("Enter your email address and password.");
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (/invalid login credentials/i.test(error.message || "")) throw new Error("Invalid email or password. If this account previously used a sign-in link, choose Forgot password? once to set a password.");
+      throw error;
+    }
+    setMessage("Signed in. Your secure learner record is now connected.", "good");
+  }
+
+  async function createPasswordAccount() {
     const email = String($("authEmail").value || "").trim();
     const name = String($("authName").value || "").trim();
-    if (!name || !email) throw new Error("Enter both your full name and email address.");
-    const { error } = await client.auth.signInWithOtp({
+    const password = String($("authPassword").value || "");
+    if (!name || !email || !password) throw new Error("Enter your full name, email address and password.");
+    validatePassword(password);
+    const { data, error } = await client.auth.signUp({
       email,
-      options: {
-        emailRedirectTo: window.location.href.split("#")[0],
-        data: { display_name: name, requested_role: "student" },
-      },
+      password,
+      options: { data: { display_name: name, requested_role: "student" }, emailRedirectTo: window.location.href.split("#")[0] },
     });
     if (error) throw error;
-    setMessage("A secure sign-in link has been emailed. Open it in this browser to continue.", "good");
+    if (data.session) setMessage("Account created and signed in. Your secure learner record is ready.", "good");
+    else setMessage("Account created. Check your email once to confirm the account, then sign in with your password.", "good");
+  }
+
+  async function requestPasswordReset() {
+    const email = String($("authEmail").value || "").trim();
+    if (!email) throw new Error("Enter your email address first.");
+    const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split("#")[0] });
+    if (error) throw error;
+    setMessage("If that account exists, a password-reset email has been sent. Use it once, then return here to sign in with your new password.", "good");
+  }
+
+  async function updatePassword() {
+    const password = String($("newPassword").value || "");
+    const confirmation = String($("confirmPassword").value || "");
+    validatePassword(password);
+    if (password !== confirmation) throw new Error("The new passwords do not match.");
+    const { error } = await client.auth.updateUser({ password });
+    if (error) throw error;
+    passwordRecoveryMode = false;
+    $("passwordRecoveryControls").classList.add("hidden");
+    $("newPassword").value = "";
+    $("confirmPassword").value = "";
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    setMessage("Password updated. You can now sign in with your email and password.", "good");
   }
 
   async function renderSession(session) {
@@ -348,13 +391,15 @@
     if (!activeUser) {
       remoteProgress = null;
       officialCertificate = null;
-      setMessage(projectReady ? "Sign in with email to save and submit an official completion record." : "Secure record service is being configured. Local browser saving remains available.");
+      $("passwordRecoveryControls").classList.add("hidden");
+      setMessage(projectReady ? "Sign in with your email and password to save and submit an official completion record." : "Secure record service is being configured. Local browser saving remains available.");
       return;
     }
     const displayName = activeUser.user_metadata?.display_name || activeUser.email?.split("@")[0] || "Signed-in learner";
     $("signedInName").textContent = displayName;
     $("signedInEmail").textContent = activeUser.email ? `(${activeUser.email})` : "";
     if (!$("certNameInput").value) $("certNameInput").value = displayName;
+    $("passwordRecoveryControls").classList.toggle("hidden", !passwordRecoveryMode);
     await loadRemoteRecord();
     if (remoteProgress?.completion_status !== "approved") {
       await saveSecureRecord({ quiet: true });
@@ -628,7 +673,9 @@
     document.addEventListener("change", queueSecureSave);
 
     if (!projectReady) {
-      $("sendMagicLink").disabled = true;
+      $("signInPassword").disabled = true;
+      $("createPasswordAccount").disabled = true;
+      $("forgotPassword").disabled = true;
       $("verifyCertificateButton").disabled = true;
       setMessage("Secure record service is being configured. Local browser saving remains available.", "needs");
       return;
@@ -636,12 +683,15 @@
     client = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey);
     $("capturePreAssessment").addEventListener("click", () => captureAssessment("pre").catch((error) => { $("assessmentCaptureStatus").textContent = error.message; $("assessmentCaptureStatus").className = "small needs"; }));
     $("capturePostAssessment").addEventListener("click", () => captureAssessment("post").catch((error) => { $("assessmentCaptureStatus").textContent = error.message; $("assessmentCaptureStatus").className = "small needs"; }));
-    $("sendMagicLink").addEventListener("click", () => sendMagicLink().catch((error) => setMessage(error.message, "needs")));
+    $("signInPassword").addEventListener("click", () => signInWithPassword().catch((error) => setMessage(error.message, "needs")));
+    $("createPasswordAccount").addEventListener("click", () => createPasswordAccount().catch((error) => setMessage(error.message, "needs")));
+    $("forgotPassword").addEventListener("click", () => requestPasswordReset().catch((error) => setMessage(error.message, "needs")));
+    $("updatePassword").addEventListener("click", () => updatePassword().catch((error) => setMessage(error.message, "needs")));
     $("saveCloudRecord").addEventListener("click", () => saveSecureRecord().catch((error) => setMessage(error.message, "needs")));
     $("requestReview").addEventListener("click", () => submitForReview().catch((error) => setMessage(error.message, "needs")));
     $("signOut").addEventListener("click", () => client.auth.signOut().catch((error) => setMessage(error.message, "needs")));
     $("verifyCertificateButton").addEventListener("click", verifyCertificate);
-    client.auth.onAuthStateChange((_event, session) => { window.setTimeout(() => renderSession(session).catch((error) => setMessage(error.message, "needs")), 0); });
+    client.auth.onAuthStateChange((event, session) => { if (event === "PASSWORD_RECOVERY") passwordRecoveryMode = true; window.setTimeout(() => renderSession(session).catch((error) => setMessage(error.message, "needs")), 0); });
     const { data: { session } } = await client.auth.getSession();
     await renderSession(session);
   }
